@@ -78,6 +78,10 @@ bombsloop:  sb	    $t3, 0($t0)		# load "-" into byte in memory
 	newl
             jal     p_bombs
 # end of plant bombs
+
+# ADD NEXT PART OF PROGRAM HERE:
+
+
             j       end
 
 # END OF MAIN SECTION
