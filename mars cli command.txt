@@ -1,0 +1,7 @@
+java -jar Mars4_5.jar sm nc minesweeper.asm > output.txt
+
+
+Type in cmd to run minesweeper.asm on cmd
+output txt prints output
+
+or just open MARS
