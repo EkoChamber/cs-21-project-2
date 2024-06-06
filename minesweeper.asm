@@ -103,24 +103,35 @@ gameplay:
             moveprompt
             scan(move_inp, 6)
 # parsing move input
-            lbu $t0, move_inp+0($0)	# $t0 = O, F, U, D
-# end of make move
+        lbu $t1, move_inp+0($0)	# $t0 = O, F, U, D
+        # determine location in memory
+        
+        li $t2, 0
+        
+        lbu     $t3, move_inp+2($t2)    # $t3 = row (ABCDEFGH)
+        lbu     $t4, move_inp+3($t2)    # $t4 = col (12345678)
+        cellno($t3,$t4,$t5)         # offset for where byte is, stores value at $t5. USES $t0 (wipes value)
+# end of make move	
 
-	    la	$t1, move_choices
-	    
-	    lb	$t2, 0($t1)
-	    beq	$t0, $t2, open
-	    
-	    lb	$t2, 1($t1)
-	    beq	$t0, $t2, flag
-	    
-	    lb	$t2, 2($t1)
-	    beq	$t0, $t2, unflag
-	    
-	    lb	$t2, 3($t1)
-	    beq	$t0, $t2, done
+	    move $a0, $t5		# $a0 as 'cellno' parameter for functions
 
-            j       end
+	    la	$t6, move_choices
+	    
+	    lb	$t2, 0($t6)
+	    beq	$t1, $t2, open
+	    
+	    lb	$t2, 1($t6)
+	    beq	$t1, $t2, flag
+	    
+	    lb	$t2, 2($t6)
+	    beq	$t1, $t2, unflag
+	    
+	    lb	$t2, 3($t6)
+	    beq	$t1, $t2, done
+	    
+	    j	gameplay
+
+            # j       end
 
 # END OF MAIN SECTION
 
@@ -330,29 +341,100 @@ pbr:
 
 #open(cellno)
 open:
+	move    $t0, $a0		# cellno
+
     la  $a0, open_msg
     li  $v0, 4			# syscall 4 = print string
     syscall
     
-    jr	$ra
+    j	gameplay
 #end of open()
 
 #flag(cellno)
+#still needs flags<7 condition
 flag:
-    la  $a0, flag_msg
-    li  $v0, 4			# syscall 4 = print string
-    syscall
+    addi    $sp, $sp, -8
+    sw      $ra, 4($sp)
+    sw      $s0, 0($sp)
+
+    move    $s0, $a0             # $s0 = cellno
     
-    jr	$ra
+    la      $t0, board
+    add     $t0, $t0, $s0
+    
+    # check if invalid    
+    li	    $t1, '-'
+    lb	    $t2, 0($t0)
+    bne	    $t2, $t1, invalid
+    
+    # board[cellno] = 'F'
+    li      $t1, 'F'
+    sb      $t1, 0($t0)
+
+    # check if(bombs[cellno]==9)
+    la      $t2, bombs
+    add     $t2, $t2, $s0
+    lb      $t3, 0($t2)          # $t3 = bombs[cellno]
+    li      $t4, 9               # $t4 = 9
+    beq     $t3, $t4, f_bomb_found # if bombs[cellno] == 9, jump to bomb_found
+
+    # else return 0
+    li      $v0, 0               # $v0 = 0
+    j       flag_end
+
+f_bomb_found:
+    #  return 1
+    li      $v0, 1               # $v0 = 1
+
+flag_end:
+    lw      $s0, 0($sp)
+    lw      $ra, 4($sp)
+    addi    $sp, $sp, 8
+    
+    j	gameplay
 #end of flag()
 
 #unflag(cellno)
 unflag:
-    la  $a0, unflag_msg
-    li  $v0, 4			# syscall 4 = print string
-    syscall
+    addi    $sp, $sp, -8
+    sw      $ra, 4($sp)
+    sw      $s0, 0($sp)
+
+    move    $s0, $a0             # $s0 = cellno
+
+    la      $t0, board
+    add     $t0, $t0, $s0
+
+    # check if invalid    
+    li	    $t1, 'F'
+    lb	    $t2, 0($t0)
+    bne	    $t2, $t1, invalid
     
-    jr	$ra
+    # board[cellno] = '-'
+    li      $t1, '-'
+    sb      $t1, 0($t0)
+
+    # check if(bombs[cellno]==9)
+    la      $t2, bombs
+    add     $t2, $t2, $s0
+    lb      $t3, 0($t2)          # $t3 = bombs[cellno]
+    li      $t4, 9               # $t4 = 9
+    beq     $t3, $t4, u_bomb_found # if bombs[cellno] == 9, jump to bomb_found
+
+    # else return 0
+    li      $v0, 0               # $v0 = 0
+    j       unflag_end
+
+u_bomb_found:
+    #  return -1
+    li      $v0, -1               # $v0 = -1
+
+unflag_end:
+    lw      $s0, 0($sp)
+    lw      $ra, 4($sp)
+    addi    $sp, $sp, 8
+    
+    j	gameplay
 #end of unflag()
 
 #done(cellno)
@@ -368,6 +450,13 @@ done:
 
 
 #END OF FUNCTIONS SECTION
+
+invalid:
+    la  $a0, invalid_msg
+    li  $v0, 4			# syscall 4 = print string
+    syscall
+    
+    j	gameplay
 
 end:        exit
 #END OF PROGRAM
@@ -386,6 +475,4 @@ lose_msg:	.asciiz "\nLOSE!\n"
 
 # temp strings for checking only
 open_msg:	.asciiz "Open\n"
-flag_msg:	.asciiz "Flag\n"
-unflag_msg:	.asciiz "Unflag\n"
 done_msg:	.asciiz "Done\n"
