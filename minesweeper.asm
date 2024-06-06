@@ -340,14 +340,55 @@ pbr:
 #PLAYER MOVES
 
 #open(cellno)
-open:
-	move    $t0, $a0		# cellno
+# Registers:
+# $a0 - cellno
+# $t0 - address of board
+# $t1 - address of bombs
+# $t2 - current board cell value
+# $t3 - current bomb cell value
 
-    la  $a0, open_msg
-    li  $v0, 4			# syscall 4 = print string
-    syscall
+open:
+    # Save return address and registers
+    addi    $sp, $sp, -16
+    sw      $ra, 12($sp)
+    sw      $s0, 8($sp)
+    sw      $s1, 4($sp)
+    sw      $s2, 0($sp)
+
+    move    $s0, $a0          # $s0 = cellno
+
+    # if(cellno<0) return
+    bltz    $s0, open_end
     
-    j	gameplay
+    la      $t0, board
+    add     $t0, $t0, $s0
+    
+    la      $t1, bombs
+    add     $t1, $t1, $s0
+    
+    # check if invalid
+    li	    $t2, '-'
+    lb	    $t3, 0($t0)
+    bne	    $t3, $t2, invalid
+    
+    # check if(bombs[cellno]==9)
+    li      $t2, 9               # $t2 = 9
+    lb      $t3, 0($t1)          # $t3 = bombs[cellno]
+    beq     $t3, $t2, done 	 # if bombs[cellno] == 9, jump to done
+    
+    # WIP
+    # if(bombs[cellno]==0)
+
+open_end:
+    # Restore registers and return address
+    lw      $s2, 0($sp)
+    lw      $s1, 4($sp)
+    lw      $s0, 8($sp)
+    lw      $ra, 12($sp)
+    addi    $sp, $sp, 16
+
+    j	    gameplay
+
 #end of open()
 
 #flag(cellno)
