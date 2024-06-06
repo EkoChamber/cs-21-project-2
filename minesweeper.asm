@@ -23,6 +23,20 @@
     syscall
 .end_macro
 
+# prints board_msg
+.macro	boardmsg
+    la  $a0, board_msg
+    li  $v0, 4			# syscall 4 = print string
+    syscall
+.end_macro
+
+# prints move_msg
+.macro	moveprompt
+    la  $a0, move_msg
+    li  $v0, 4			# syscall 4 = print string
+    syscall
+.end_macro
+
 # scans %len amt. of chars. NOTE: Label should have len+1 bytes allocated (+1 for null byte)
 .macro      scan(%strlbl,%len)
     la  $a0, %strlbl        # label addr to input to
@@ -81,6 +95,30 @@ bombsloop:  sb	    $t3, 0($t0)		# load "-" into byte in memory
 
 # ADD NEXT PART OF PROGRAM HERE:
 
+gameplay:
+            boardmsg
+            jal	    p_board
+            
+# make move
+            moveprompt
+            scan(move_inp, 6)
+# parsing move input
+            lbu $t0, move_inp+0($0)	# $t0 = O, F, U, D
+# end of make move
+
+	    la	$t1, move_choices
+	    
+	    lb	$t2, 0($t1)
+	    beq	$t0, $t2, open
+	    
+	    lb	$t2, 1($t1)
+	    beq	$t0, $t2, flag
+	    
+	    lb	$t2, 2($t1)
+	    beq	$t0, $t2, unflag
+	    
+	    lb	$t2, 3($t1)
+	    beq	$t0, $t2, done
 
             j       end
 
@@ -96,7 +134,7 @@ p_board:
             li      $t4, 8      # newline condition
             li      $t5, 0      # newline counter
 
-pbd_loop:   lbu     $t3, 0($t0)
+pbd_loop:   lbu     $t3, 0($t0)			    # board[i]
             printb($t3)
             addi	$t0, $t0, 1		    # next byte in memory
             addi	$t1, $t1, 1		    # $t1++ (counter for loop)
@@ -117,7 +155,7 @@ p_bombs:
             li      $t4, 8      # newline condition
             li      $t5, 0      # newline counter
 
-pbm_loop:   lbu     $t3, 0($t0)
+pbm_loop:   lbu     $t3, 0($t0)			    # bombs[i]
             ble     $t3, $t4, skipbcell     #check if cell is a bomb
 # cell is a bomb
             li      $t3, 66     # 66 = 'B' in ascii
@@ -135,7 +173,7 @@ skipprint:  printb($t3)
 skipn2:     blt	    $t1, $t2, pbm_loop	# if $t1 < 64 then loop
 
             jr	    $ra
-#end of print_board()
+#end of print_bombs()
 
 #plant(string of locations)
 plant:
@@ -288,6 +326,46 @@ pbr:
         jr      $ra
 #end of plant()
 
+#PLAYER MOVES
+
+#open(cellno)
+open:
+    la  $a0, open_msg
+    li  $v0, 4			# syscall 4 = print string
+    syscall
+    
+    jr	$ra
+#end of open()
+
+#flag(cellno)
+flag:
+    la  $a0, flag_msg
+    li  $v0, 4			# syscall 4 = print string
+    syscall
+    
+    jr	$ra
+#end of flag()
+
+#unflag(cellno)
+unflag:
+    la  $a0, unflag_msg
+    li  $v0, 4			# syscall 4 = print string
+    syscall
+    
+    jr	$ra
+#end of unflag()
+
+#done(cellno)
+done:
+    la  $a0, done_msg
+    li  $v0, 4			# syscall 4 = print string
+    syscall
+    
+    j	end
+#end of done()
+
+#END OF PLAYER MOVES SECTION
+
 
 #END OF FUNCTIONS SECTION
 
@@ -298,3 +376,16 @@ end:        exit
 bombs:  .space  64	# 8x8 board for bombs
 board:  .space  64	# 8x8 board for the player
 cell:   .space 22    # 7x2 bytes for cell location, 7 bytes for white space, 1 byte for null char
+move_inp:	.space 6	# 1 byte for move, 2 bytes for cell location, 2 bytes for white space, 1 byte for null char
+move_choices:	.asciiz "OFUD"
+board_msg:	.asciiz "\nBOARD: \n"
+move_msg:	.asciiz "MOVE: "
+invalid_msg:	.asciiz "Invalid input\n"
+win_msg:	.asciiz "\nWIN!\n"
+lose_msg:	.asciiz "\nLOSE!\n"
+
+# temp strings for checking only
+open_msg:	.asciiz "Open\n"
+flag_msg:	.asciiz "Flag\n"
+unflag_msg:	.asciiz "Unflag\n"
+done_msg:	.asciiz "Done\n"
