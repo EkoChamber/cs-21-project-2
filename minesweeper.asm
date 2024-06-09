@@ -93,7 +93,7 @@ bombsloop:  sb	    $t3, 0($t0)		# load "-" into byte in memory
             jal     p_bombs
 # end of plant bombs
 
-# ADD NEXT PART OF PROGRAM HERE:
+# gameplay loop
 
 	li $s0, 0	# score
 	li $s1, 0	# flags
@@ -101,40 +101,73 @@ bombsloop:  sb	    $t3, 0($t0)		# load "-" into byte in memory
 gameplay:
             boardmsg
             jal	    p_board
-            
+
 # make move
             moveprompt
             scan(move_inp, 6)
 # parsing move input
         lbu $t1, move_inp+0($0)	# $t0 = O, F, U, D
         # determine location in memory
-        
-        li $t2, 0
-        
-        lbu     $t3, move_inp+2($t2)    # $t3 = row (ABCDEFGH)
-        lbu     $t4, move_inp+3($t2)    # $t4 = col (12345678)
-        cellno($t3,$t4,$t5)         # offset for where byte is, stores value at $t5. USES $t0 (wipes value)
-# end of make move	
 
-	    move $a0, $t5		# $a0 as 'cellno' parameter for functions
-
+        lbu     $a1, move_inp+2         # $t3 = row (ABCDEFGH)
+        lbu     $a2, move_inp+3         # $t4 = col (12345678)
+        cellno($a1,$a2,$a0)         # offset for where byte is, stores value at $a0. USES $t0 (wipes value)
+# end of make move
 	    la	$t6, move_choices
-	    
+
 	    lb	$t2, 0($t6)
-	    beq	$t1, $t2, open
-	    
+	    beq	$t1, $t2, open_decide
+
 	    lb	$t2, 1($t6)
 	    beq	$t1, $t2, flag
-	    
+
 	    lb	$t2, 2($t6)
 	    beq	$t1, $t2, unflag
-	    
+
 	    lb	$t2, 3($t6)
 	    beq	$t1, $t2, done
-	    
+
 	    j	gameplay
 
-            # j       end
+# check if opened cell is bomb/opened/flagged when open is called
+open_decide:
+        lb  $t9, bombs+0($a0)
+        lbu $t8, board+0($a0)
+        li  $t3, 8
+        li  $t4, '-'
+        bne $t8, $t4, invalid   # check flag takes priority
+        bgt $t9, $t3, lose      # over checking bomb
+        jal open
+        j gameplay  # return to loop
+
+done:
+        li	   $t0, 7
+        bne	   $s0, $t0, lose
+
+#win
+        la  $a0, win_msg
+        li  $v0, 4			# syscall 4 = print string
+        syscall
+
+        j winskip
+    lose:
+        la  $a0, lose_msg
+        li  $v0, 4			# syscall 4 = print string
+        syscall
+
+    winskip:
+        move  $a0, $s0
+        li  $v0, 1			# syscall 1 = print int
+        syscall
+
+        la  $a0, score_msg
+        li  $v0, 4			# syscall 4 = print string
+        syscall
+
+        jal end_board
+        jal p_board
+
+        j	end
 
 # END OF MAIN SECTION
 
@@ -316,8 +349,8 @@ pbl:
 pbc:
 
         # bot right corner
-        beq     $t3, $t8, pbl
-        beq     $t4, $t8, pbl
+        beq     $t3, $t8, pbr
+        beq     $t4, $t8, pbr
 
         addi    $s0, $t3, 1         # 1 downwards
         addi    $s1, $t4, 1         # 1 to the right
@@ -331,7 +364,7 @@ pbc:
 pbr:
 
         # end of increment adjacent cells
-        addi    $t1, $t1, 3         # increment by 3
+        addi    $t1, $t1, 1         # increment by 1
         blt     $t1, $t2, p_loop
 
         lw      $s0, 0($sp)
@@ -342,291 +375,273 @@ pbr:
 
 #PLAYER MOVES
 
-#open(cellno)
-# $t3 = row
-# $t4 = column
-# $t5 = cellno
+#open(cellno,row,col)
+# $a1 = row
+# $a2 = column
+# $a0 = cellno
 open:
-        addi    $sp, $sp, -8
+        addi    $sp, $sp, -20
+        sw      $ra, 16($sp)
+        sw      $s3, 12($sp)
+        sw      $s2, 8($sp)
         sw      $s1, 4($sp)
         sw      $s0, 0($sp)
 
-        li      $t1, 0		        # counter for loop
-        #li	    $t2, 21             # loop condition, 7 bombs x 3 bytes to go through
-        li      $t9, 9              # when cell >9, cell contains bomb in bomb board
-        li      $t6, 8              # multiply row
-        
-        # if(cellno<0) return
-        bltz    $s0, obr
-    
-        la      $t0, board
-        add     $t0, $t0, $t5
-    
-        la      $t1, bombs
-        add     $t1, $t1, $t5
-    
-        # check if invalid
+        # check if cell is opened already
         li	    $t2, '-'
-        lb	    $t3, 0($t0)
-        bne	    $t3, $t2, invalid
-    
-        # check if(bombs[cellno]==9)
-        li      $t2, 9               # $t2 = 9
-        lb      $t3, 0($t1)          # $t3 = bombs[cellno]
-        beq     $t3, $t2, done 	 # if bombs[cellno] == 9, jump to done
-        
-o_loop:
-        # open adjacent cells  (LOTS OF BRANCHES)
+        lb	    $t3, board+0($a0)
+        bne	    $t3, $t2, obr       # obr here is return for this function
+
+        # open cell at $a0
+        lb      $t1, bombs+0($a0)
+        addi    $t1, $t1, '0'
+        sb      $t1, board+0($a0)
+
+        # check if cell is not a 0 cell
+        li      $t0, '0'
+        bne     $t1, $t0, obr       # if($t1!='0') jump to obr
+
+        # comparison registers for opening adjacent cells
         li      $t7, 0
         li      $t8, 7
 
+        # multiply row
+        li      $t6, 8
+
+        # move $a1 and $a2 to $s0 and $s1 respectively
+        move    $s0, $a1
+        move    $s1, $a2
 
         # top left corner
-        beq     $t3, $t7, otl
-        beq     $t4, $t7, otl
+        beq     $s0, $t7, otl
+        beq     $s1, $t7, otl
 
-        addi    $s0, $t3, -1        # 1 upwards
-        addi    $s1, $t4, -1        # 1 to the left
-        mult    $s0, $t6
-        mflo    $s0
-        add     $s0, $s0, $s1
+        addi    $a1, $s0, -1        # 1 upwards
+        addi    $a2, $s1, -1        # 1 to the left
+        mult    $a1, $t6
+        mflo    $s3
+        add     $a0, $s3, $a2       # s3(rowx8) + col
 
-        move	$t5, $s0
+        jal     open
 otl:
 
         # top cell
-        beq     $t3, $t7, otc
+        beq     $s0, $t7, otc
 
-        addi    $s0, $t3, -1        # 1 upwards
-        addi    $s1, $t4, 0         # copy
-        mult    $s0, $t6
-        mflo    $s0
-        add     $s0, $s0, $s1
+        addi    $a1, $s0, -1        # 1 upwards
+        addi    $a2, $s1, 0         # copy
+        mult    $a1, $t6
+        mflo    $s3
+        add     $a0, $s3, $a2       # s3(rowx8) + col
 
-        move	$t5, $s0
+        jal     open
 otc:
 
         # top right corner
-        beq     $t3, $t7, otr
-        beq     $t4, $t8, otr
+        beq     $s0, $t7, otr
+        beq     $s1, $t8, otr
 
-        addi    $s0, $t3, -1        # 1 upwards
-        addi    $s1, $t4, 1         # 1 to the right
-        mult    $s0, $t6
-        mflo    $s0
-        add     $s0, $s0, $s1
+        addi    $a1, $s0, -1        # 1 upwards
+        addi    $a2, $s1, 1         # 1 to the right
+        mult    $a1, $t6
+        mflo    $s3
+        add     $a0, $s3, $a2       # s3(rowx8) + col
 
-        move	$t5, $s0
+        jal     open
 otr:
 
         # left cell
-        beq     $t4, $t7, olc
+        beq     $s1, $t7, olc
 
-        addi    $s0, $t3, 0         # copy
-        addi    $s1, $t4, -1        # 1 to the left
-        mult    $s0, $t6
-        mflo    $s0
-        add     $s0, $s0, $s1
+        addi    $a1, $s0, 0         # copy
+        addi    $a2, $s1, -1        # 1 to the left
+        mult    $a1, $t6
+        mflo    $s3
+        add     $a0, $s3, $a2       # s3(rowx8) + col
 
-        move	$t5, $s0
+        jal     open
 olc:
 
         # right cell
-        beq     $t4, $t8, orc
+        beq     $s1, $t8, orc
 
-        addi    $s0, $t3, 0         # copy
-        addi    $s1, $t4, 1         # 1 to the right
-        mult    $s0, $t6
-        mflo    $s0
-        add     $s0, $s0, $s1
+        addi    $a1, $s0, 0         # copy
+        addi    $a2, $s1, 1         # 1 to the right
+        mult    $a1, $t6
+        mflo    $s3
+        add     $a0, $s3, $a2       # s3(rowx8) + col
 
-        move	$t5, $s0
+        jal     open
 orc:
 
         # bot left corner
-        beq     $t3, $t8, obl
-        beq     $t4, $t7, obl
+        beq     $s0, $t8, obl
+        beq     $s1, $t7, obl
 
-        addi    $s0, $t3, 1         # 1 downwards
-        addi    $s1, $t4, -1        # 1 to the left
-        mult    $s0, $t6
-        mflo    $s0
-        add     $s0, $s0, $s1
+        addi    $a1, $s0, 1         # 1 downwards
+        addi    $a2, $s1, -1        # 1 to the left
+        mult    $a1, $t6
+        mflo    $s3
+        add     $a0, $s3, $a2       # s3(rowx8) + col
 
-        move	$t5, $s0
+        jal     open
 obl:
 
         # bot cell
-        beq     $t3, $t8 obc
+        beq     $s0, $t8 obc
 
-        addi    $s0, $t3, 1         # 1 downwards
-        addi    $s1, $t4, 0         # copy
-        mult    $s0, $t6
-        mflo    $s0
-        add     $s0, $s0, $s1
+        addi    $a1, $s0, 1         # 1 downwards
+        addi    $a2, $s1, 0         # copy
+        mult    $a1, $t6
+        mflo    $s3
+        add     $a0, $s3, $a2       # s3(rowx8) + col
 
-        move	$t5, $s0
+        jal     open
 obc:
 
         # bot right corner
-        beq     $t3, $t8, obl
-        beq     $t4, $t8, obl
+        beq     $s0, $t8, obr
+        beq     $s1, $t8, obr
 
-        addi    $s0, $t3, 1         # 1 downwards
-        addi    $s1, $t4, 1         # 1 to the right
-        mult    $s0, $t6
-        mflo    $s0
-        add     $s0, $s0, $s1
+        addi    $a1, $s0, 1         # 1 downwards
+        addi    $a2, $s1, 1         # 1 to the right
+        mult    $a1, $t6
+        mflo    $s3
+        add     $a0, $s3, $a2       # s3(rowx8) + col
 
-        move	$t5, $s0
+        jal     open
 obr:
-
-        # end of increment adjacent cells
-        addi    $t1, $t1, 3         # increment by 3
-        blt     $t1, $t2, o_loop
-
         lw      $s0, 0($sp)
         lw      $s1, 4($sp)
-        addi    $sp, $sp, 8
-        j	gameplay
+        lw      $s2, 8($sp)
+        lw      $s3, 12($sp)
+        lw      $ra, 16($sp)
+        addi    $sp, $sp, 20
+        jr      $ra
 #end of open()
 
 #flag(cellno)
 #may error w the score
 flag:
-    addi    $sp, $sp, -8
-    sw      $ra, 4($sp)
-    sw      $t5, 0($sp)
-
+    #removed stack allocation since not needed
     move    $t5, $a0             # $t5 = cellno
-    
-    la      $t0, board
-    add     $t0, $t0, $t5
-    
-    # check if invalid    
+
+    # check if invalid
     li	    $t1, '-'
-    lb	    $t2, 0($t0)
+    lb	    $t2, board+0($a0)
     bne	    $t2, $t1, invalid
-    
+
     # check if flags<7
     li	    $t1, 7
     beq	    $s1, $t1, invalid
-    
+
     # board[cellno] = 'F'
     li      $t1, 'F'
-    sb      $t1, 0($t0)
-    addi    $s1, $s1, 1
+    sb      $t1, board+0($a0)
+    addi    $s1, $s1, 1     #increment flags register
 
-    # check if(bombs[cellno]==9)
-    la      $t2, bombs
-    add     $t2, $t2, $t5
-    lb      $t3, 0($t2)          # $t3 = bombs[cellno]
-    li      $t4, 9               # $t4 = 9
-    beq     $t3, $t4, f_bomb_found # if bombs[cellno] == 9, jump to bomb_found
+    # check if(bombs[cellno]>8)
+    lb      $t3, bombs+0($a0)    # $t3 = bombs[cellno]
+    li      $t4, 8               # $t4 = 9
+    bgt     $t3, $t4, f_bomb_found # if bombs[cellno] == 9, jump to bomb_found
 
-    # else return 0
-    li      $v0, 0               # $v0 = 0
+    # else return
     j       flag_end
 
 f_bomb_found:
-    #  return 1
-    li      $v0, 1               # $v0 = 1
-    add	    $s0, $s0, $v0	 # score+= flag(cellno)
+    # add to score
+    addi    $s0, $s0, 1     # score+= flag(cellno)
 
 flag_end:
     lw      $t5, 0($sp)
     lw      $ra, 4($sp)
     addi    $sp, $sp, 8
-    
-    jal     p_bombs
-    
-    j	gameplay
-#end of flag()
+
+    j	gameplay            # no need for jal/jr $ra for this function since we jump to loop again
+#end of flag(cellno)
 
 #unflag(cellno)
 unflag:
-    addi    $sp, $sp, -8
-    sw      $ra, 4($sp)
-    sw      $t5, 0($sp)
-
+    #removed stack allocation since not needed
     move    $t5, $a0             # $t5 = cellno
 
-    la      $t0, board
-    add     $t0, $t0, $t5
-
-    # check if invalid    
+    # check if invalid
     li	    $t1, 'F'
-    lb	    $t2, 0($t0)
+    lb	    $t2, board+0($a0)
     bne	    $t2, $t1, invalid
-    
+
     # board[cellno] = '-'
     li      $t1, '-'
-    sb      $t1, 0($t0)
+    sb      $t1, board+0($a0)
     subi    $s1, $s1, 1
 
-    # check if(bombs[cellno]==9)
-    la      $t2, bombs
-    add     $t2, $t2, $t5
-    lb      $t3, 0($t2)          # $t3 = bombs[cellno]
-    li      $t4, 9               # $t4 = 9
-    beq     $t3, $t4, u_bomb_found # if bombs[cellno] == 9, jump to bomb_found
+    # check if(bombs[cellno]>8)
+    lb      $t3, bombs+0($a0)    # $t3 = bombs[cellno]
+    li      $t4, 8               # $t4 = 9
+    bgt     $t3, $t4, u_bomb_found # if bombs[cellno] == 9, jump to bomb_found
 
-    # else return 0
-    li      $v0, 0               # $v0 = 0
+    # else return
     j       unflag_end
 
 u_bomb_found:
-    #  return -1
-    li      $v0, -1               # $v0 = -1
-    add	    $s0, $s0, $v0	 # score+= flag(cellno)
+    #  decrement score
+    addi    $s0, $s0, -1    # score+= flag(cellno)
 
 unflag_end:
-    lw      $t5, 0($sp)
-    lw      $ra, 4($sp)
-    addi    $sp, $sp, 8
-    
-    j	gameplay
-#end of unflag()
+    j	gameplay            # no need for jal/jr $ra for this function since we jump to loop again
+#end of unflag(cellno)
 
-#done(cellno)
-done:
-    li	   $t0, 7
-    bne	   $s0, $t0, lose
+# END OF PLAYER MOVES SECTION
 
-#win
-    la  $a0, win_msg
-    li  $v0, 4			# syscall 4 = print string
-    syscall
-    
-    j end
-    
-lose:
-    la  $a0, lose_msg
-    li  $v0, 4			# syscall 4 = print string
-    syscall
-    
-    move  $a0, $s0
-    li  $v0, 1			# syscall 1 = print int
-    syscall
-    
-    la  $a0, score_msg
-    li  $v0, 4			# syscall 4 = print string
-    syscall
-    
-    j	end
-#end of done()
-
-#END OF PLAYER MOVES SECTION
-
-
-#END OF FUNCTIONS SECTION
-
+# invalid function/label to jump to
 invalid:
     la  $a0, invalid_msg
     li  $v0, 4			# syscall 4 = print string
     syscall
-    
-    j	gameplay
+
+    j	gameplay            # no need for jal/jr $ra for this function since we jump to loop again
+
+# function to change board to how it is when game ends
+# - copies bombs board onto player board
+# - when F is placed, if no bomb, then print X. If bomb, keep as is (as "F")
+end_board:
+        li      $t0, 0      # loop counter
+        li      $t1, 64     # loop condition
+        li      $t4, 8      # checking for bombs
+        li      $t5, 'F'    # checking for flags
+        li      $t6, 'X'    # for wrong flags
+        li      $t7, 'B'    # for unflagged bombs
+
+ebloop:
+        lbu     $t2, board+0($t0)
+        lb      $t3, bombs+0($t0)
+
+        # case if cell is a flag
+        bne     $t2, $t5, bombeb    #if not a flag, skip to bombeb
+        bgt     $t3, $t4, skipeb    #if bomb, go next cell
+        # if cell flagged is not a bomb:
+        sb      $t6, board+0($t0)
+        j       skipeb
+
+
+bombeb:
+        # if cell is unflagged bomb
+        ble     $t3, $t4, normeb    #if not a bomb, skip to normeb
+        sb      $t7, board+0($t0)
+        j       skipeb
+
+normeb:
+        # if player board cell is '-' and not a bomb
+        addi    $t3, $t3, '0'
+        sb      $t3, board+0($t0)
+skipeb:
+        addi    $t0, $t0, 1
+        blt     $t0, $t1, ebloop
+
+        jr      $ra
+
+
+#END OF FUNCTIONS SECTION
 
 end:        exit
 #END OF PROGRAM
@@ -639,7 +654,7 @@ move_inp:	.space 6	# 1 byte for move, 2 bytes for cell location, 2 bytes for whi
 move_choices:	.asciiz "OFUD"
 board_msg:	.asciiz "\nBOARD: \n"
 move_msg:	.asciiz "MOVE: "
-invalid_msg:	.asciiz "Invalid input\n"
+invalid_msg:	.asciiz "\nInvalid input"
 win_msg:	.asciiz "\nWIN!\n"
 lose_msg:	.asciiz "\nLOSE!\n"
 score_msg:	.asciiz " of 7 bombs.\n"
