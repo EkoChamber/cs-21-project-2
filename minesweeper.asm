@@ -54,16 +54,6 @@
 .end_macro
 
 .text
-# REGISTERS TO SAVE:
-# -$s0-$s7  	(when needed)
-# -$ra      	(on recursion or nested fxn calls)
-# -$a0-$a3  	(use for function input, save for recursion/nested fxn calls)
-# -$sp      	(when using the stack)
-#
-# when a function doesnt need to save registers AT ALL, better to use $t0-$t9 registers so we dont need to worry abt the stack
-# init $t0-$t9 to 0 or whatever value needed before use
-# anything not on list, treat as temp register (no need to save)
-
 # MAIN SECTION
 
 main:
@@ -87,9 +77,6 @@ bombsloop:
 # plant bombs
   	scan(cell, 22)
         jal    	plant
-
-	newl
-     	jal    	p_bombs
 # end of plant bombs
 
 # gameplay loop
@@ -188,7 +175,7 @@ pbd_loop:
         bne  	$t5, $t4, skipn1	# if $t5!=8, dont add newline
         newl
         li      $t5, 0           	# reset counter
-skipn1: 
+skipn1:
 	blt  	$t1, $t2, pbd_loop	# if $t1 < 64 then loop
 
         jr	$ra
@@ -212,7 +199,7 @@ pbm_loop:
 skipbcell:
 	addi    $t3, $t3, 48        	# 48 = '0' in ascii
 
-skipprint:  
+skipprint:
 	printb($t3)
         addi	$t0, $t0, 1		# next byte in memory
         addi	$t1, $t1, 1		# $t1++ (counter for loop)
@@ -220,7 +207,7 @@ skipprint:
         bne   	$t5, $t4, skipn2    	# if $t5!=8, dont add newline
         newl
         li      $t5, 0              	# reset counter
-skipn2:     
+skipn2:
 	blt	$t1, $t2, pbm_loop	# if $t1 < 64 then loop
 
      	jr    	$ra
@@ -589,7 +576,7 @@ u_bomb_found:
     	addi    $s0, $s0, -1    	# score+= flag(cellno)
 
 unflag_end:
-    	j	gameplay          
+    	j	gameplay
 #end of unflag(cellno)
 
 # END OF PLAYER MOVES SECTION
@@ -600,7 +587,7 @@ invalid:
     	li  	$v0, 4			# syscall 4 = print string
     	syscall
 
-    	j	gameplay          
+    	j	gameplay
 
 # function to change board to how it is when game ends
 # - copies bombs board onto player board
